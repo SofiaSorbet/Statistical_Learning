@@ -1,0 +1,288 @@
+---
+title: "Voluntary exercises"
+author: "Sofia Sorbet Santiago"
+date: "28/2/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, echo = FALSE}
+## Loading the required package
+library(nor1mix)
+# Installation of required packages
+packages <- c( "ks" , "mvtnorm" , "nor1mix" , "rgl" ,"viridis" ,
+                "circular" , "MASS" , "boot" )
+# Load packages
+a = lapply(packages, library, character.only = TRUE)
+
+## Set seed 
+set.seed(1)
+```
+
+
+## Exercise 3.12.
+
+**Consider the bimodal density f given in norm1mix::MW.nm6. Consider, also, c=0.15 and 0.25. Compute** $\mathcal{L}(f;c)$ **and from a sample of size n = 200, compute** $\mathcal{L}(\hat{f}(.;\hat{h}_{DPI});c)$. **As in this exercise two c has been given, we will repeat the same procedure two times.**
+
+a. $c = 0.25$ 
+
+First of all, we will compute the level set for $c = 0.25$. In order to do this, we have to take into account that we have a bimodal normal density, which is a mixture of two normal densities. We know that both densities are symmetric, and they are centered in $(\mu_1, \mu_2) = (-1, 1)$. In order to find the points in which the cut-off is performed, we will use the function uniroot applied to the first two regions in which the cut-off is suppose to happen. This means that we will compute the roots for the first normal. The other cut-offs can be computed taking into account that the density is symmetric on 0. So, the set of points between which the $f(x) \geq c$ were called: $[x_{11}, x_{12}]U[x_{21}, x_{22}]$. The plot resulting of this procedure is the following one: 
+
+
+```{r}
+## Set seed 
+set.seed(1)
+
+## Simulating from nor1mix::MW.nm6 -> bimodal density f
+# Number of samples
+n = 200
+# Samples from the density
+samp = nor1mix::rnorMix(n = n, obj = nor1mix::MW.nm6)
+```
+
+```{r}
+c = 0.25
+
+# We are expected to find some 0 in the interval [-4,-1]
+x11_c <- tryCatch(uniroot( function(x) nor1mix::dnorMix(x = x, obj = nor1mix:: MW.nm6)-c, lower = -4, upper = -1)$root, error = function(e) NA)
+# We are expected to find some 0 in the interval [-1,0]
+x12_c <- tryCatch(uniroot( function(x) nor1mix::dnorMix(x = x, obj = nor1mix:: MW.nm6)-c, lower = -1, upper = 0)$root,
+                 error = function(e) NA)
+
+# 
+x21_c = -x12_c
+x22_c = -x11_c
+
+# Density evaluation
+x <- seq( - 4, 4, length.out = 400)
+plot(x, nor1mix::dnorMix( x = x, obj = nor1mix:: MW.nm6),  type = "l" ,ylab = "Density")
+rug(samp)
+polygon(x = c(x11_c, x11_c, x12_c, x12_c), y = c( 0, c, c, 0),
+         col = rgb(0, 0, 0, alpha = 0.5), density = 10)
+polygon(x = c(x21_c, x21_c, x22_c, x22_c), y = c( 0, c, c, 0),
+         col = rgb(0, 0, 0, alpha = 0.5), density = 10)
+abline(h = 0.25, col = "blue")
+```
+
+The points of the set were: 
+
+```{r}
+c(x11_c, x12_c, x21_c, x22_c)
+```
+
+
+Now, let's compute $\mathcal{L}(\hat{f}(.;\hat{h}_{DPI});c)$, using n = 200. To do so, first we compute the associated kde using the method DPI for computing kde.  
+
+
+```{r}
+# Density evaluation
+x <- seq( - 4, 4, length.out = 400)
+plot(x, nor1mix::dnorMix( x = x, obj = nor1mix:: MW.nm6),  type = "l" ,ylab = "Density")
+rug(samp)
+polygon(x = c(x11_c, x11_c, x12_c, x12_c), y = c( 0, c, c, 0),
+         col = rgb(0, 0, 0, alpha = 0.5), density = 10)
+polygon(x = c(x21_c, x21_c, x22_c, x22_c), y = c( 0, c, c, 0),
+         col = rgb(0, 0, 0, alpha = 0.5), density = 10)
+
+# Kde as usual, but force to evaluate it at seq(-4, 4, length = 4096) using a dpi selector
+bw = bw.SJ(x = samp)
+kde = density(x = samp, bw = bw, n = n, from = -4, to = 4)
+
+# Function to compute and plot a kde level set. Observe that kde stands for an
+# object containing the output of density(), although obvious modifications
+# could be done to the function to receive a ks::kde object
+# as the main argument
+kde_level_set <- function(kde, c, add_plot = FALSE, ...) {
+  # Begin and end index for the potentially many intervals in the level sets
+  # of the kde
+  kde_larger_c <- kde$y >= c
+  run_length_kde <- rle(kde_larger_c) # Trick to compute the length of the
+  # sequence of TRUEs that indicates an interval for which kde$y >= c
+  begin <- which( diff(kde_larger_c) > 0) # Trick to search for the beginning
+  # of each of the intervals
+  end <- begin + run_length_kde$lengths[run_length_kde$values] - 1 # Compute
+  # the end of the intervals from begin + length
+  # Add polygons to a density plot? If so, ... are the additional parameters
+  # for polygon()
+  if (add_plot) {
+    apply( cbind(begin, end), 1, function(ind) {
+      polygon( x = c(kde$x[ind[1]], kde$x[ind[ 1]],
+                     kde$x[ind[2]], kde$x[ind[ 2]]),
+               y = c( 0, kde$y[ind[ 1]],
+                      kde$y[ind[2]], 0), ...)
+    })
+  }
+  # Return the [a_i, b_i], i = 1, ..., K in the K rows
+  return( cbind(kde$x[begin], kde$x[end]))
+}
+# Add kde and level set
+lines(kde, col = 2)
+kde_level_set( kde = kde, c = c, add_plot = TRUE,
+               col = rgb( 1, 0, 0, alpha = 0.5))
+
+abline( h = c, col = 4) # Level
+legend( "topright" , legend = c( "True density" , "Kde" , "True level set" ,
+                                 "Kde level set" , "Level c" ),
+        lwd = 2, col = c( 1, 2, rgb( 0: 1, 0, 0, alpha = 0.5), 4))
+```
+
+When comparing the theoretical set of points with the estimated one, it can be seen that there are differences between both of them. If the number of evaluation points were larger, the estimtation could be closer to the real one. 
+
+
+Now we repeat the same for c = 0.15. In this case, as this c is low enough, it is not required to estimate four points using the uniroot function, but just one of them and using the existing symmetry of the function around 0. 
+
+
+```{r}
+c = 0.15
+
+# We are expected to find some 0 in the interval [-4,-1]
+x1_c <- tryCatch(uniroot( function(x) nor1mix::dnorMix(x = x, obj = nor1mix:: MW.nm6)-c, lower = -4, upper = -1)$root, error = function(e) NA)
+
+
+# Density evaluation
+x <- seq( - 4, 4, length.out = 400)
+plot(x, nor1mix::dnorMix( x = x, obj = nor1mix:: MW.nm6),  type = "l" ,ylab = "Density")
+rug(samp)
+polygon(x = c(x1_c, x1_c, -x1_c, -x1_c), y = c( 0, c, c, 0),
+         col = rgb(0, 0, 0, alpha = 0.5), density = 10)
+```
+
+The set of points are: 
+
+```{r}
+c(x1_c, -x1_c)
+```
+
+
+```{r}
+c = 0.15
+# Density evaluation
+x <- seq( - 4, 4, length.out = 400)
+plot(x, nor1mix::dnorMix( x = x, obj = nor1mix:: MW.nm6),  type = "l" ,ylab = "Density")
+rug(samp)
+polygon(x = c(x1_c, x1_c, -x1_c, -x1_c), y = c( 0, c, c, 0),
+         col = rgb(0, 0, 0, alpha = 0.5), density = 10)
+
+# Kde as usual, but force to evaluate it at seq(-4, 4, length = 4096)
+bw = bw.SJ(x = samp)
+kde = density(x = samp, bw = bw, n = n, from = -4, to = 4)
+
+# Add kde and level set
+lines(kde, col = 2)
+kde_level_set( kde = kde, c = c, add_plot = TRUE,
+               col = rgb( 1, 0, 0, alpha = 0.5))
+
+abline( h = c, col = 4) # Level
+legend( "topright" , legend = c( "True density" , "Kde" , "True level set" ,
+                                 "Kde level set" , "Level c" ),
+        lwd = 2, col = c( 1, 2, rgb( 0: 1, 0, 0, alpha = 0.5), 4))
+```
+
+
+In this case the differences with the theoretical points are also pretty large, however, we can consider that they are a good approximation. 
+
+
+## Exercise 3.27. 
+
+**Section 4.6.1. in James et al considers the problem of classifying Direction from Lag1 and Lag2 (bivariate example) in data (Smarjet, package = "ISLR") by logistic regression LDA and QDA.** 
+
+```{r}
+# First, the data is read from the package ISLR 
+data(Smarket, package = "ISLR")
+```
+
+**a. Perform a kda and represent the classification regions. Do you think the classes can be separated effectively?**
+
+In the following plot, the kernel density estimation was performed using the two required variables Lag1 and Lag2, using as a group of classification the direction. Furthermore, it can be also seen that it does not seem to exist a large separation between both classes. This means that the classification goal will be hard to achieve having this dataset, not existing an effective way to separate both groups.  
+
+```{r}
+# Kda and plotting the kda, using supp = 10 to avoid numerical artifacts
+kda = ks::kda(x = Smarket[, c("Lag1", "Lag2")], x.group = Smarket$Direction, supp = 10)
+# Plotting the result of this estimation
+plot(kda, col = rainbow(2), lwd = 2, col.pt = 1, col.part = rainbow(2, alpha = 0.25), drawpoints = TRUE)
+```
+
+**b. Split the dataset into tran (Year < 2005) and test subsets. Obtain the goal classification error rates on the test sample given by LDA and QDA (use MASS::lda and MASS::qda).** 
+
+In the following results from the chunk of code below, it can be seen that the final error rate for both methods is extremely high. This makes sense, since the data is not normally distributed, and the frontiers between both classification classes are treaky. 
+
+```{r}
+# Obtaining the training and testing index set 
+train_set = Smarket$Year < 2005
+test_set= !train_set
+
+##### LDA classification method
+lda = MASS::lda(Direction ~ Lag1 + Lag2, data = Smarket, subset = train_set)
+# Predicting
+ldap = predict(lda, newdata = Smarket[test_set,c("Lag1", "Lag2")])
+# Error rate:
+diff_classifications = ldap$class != Smarket$Direction[test_set]
+error_lda = mean(diff_classifications)
+
+##### QDA classification method
+qda = MASS::qda(Direction ~ Lag1 + Lag2, data = Smarket, subset = train_set)
+# Predicting
+qdap = predict(qda, newdata = Smarket[test_set,c("Lag1", "Lag2")])
+# Error rate:
+diff_classifications = qdap$class != Smarket$Direction[test_set]
+error_qda = mean(diff_classifications)
+
+list(error_qda =error_qda, error_lda = error_lda)
+```
+
+**c. Obtain the global classification error rate on the test sample given by kda. Use directly the Bayes rule for performing classification.**
+
+In order to obtain the global classification error on test sample using directly the Bayes rule, we need to: 
+
+a) Obtain the kde of the test set for the Down category, and evaluating it on all the testing set (being $f_j(x)$ the conditional pdf of $\textbf{X}|Y = j$). The same for the Up category. 
+
+b) Obtain the proportion of samples which were categorized as Down (being $\pi_j$ the value of the probability mass function of $Y$ at j). The same for the Up category. 
+
+c) Then, the final class that will be selected will be the one which presents the maximum value when analyzing: $\pi_j f_j(x)$. 
+
+```{r}
+### Global classification error rate on the test sample given by kda
+
+## Finding the kde for testing set (for each category) f_j(x) (conditional kde on a category)
+
+# Test points which belong to the Down category
+index_test_down = test_set&Smarket$Direction == "Down"
+# Obtaining the kde using only those test-points belonging to the Down category, but evaluated at all the test points. 
+kde_Down = ks::kde(x = Smarket[index_test_down,c("Lag1", "Lag2")], eval.points = Smarket[test_set, c("Lag1", "Lag2")], supp = 10)
+
+# Test points which belong to the Up category
+index_test_up = test_set&Smarket$Direction == "Up"
+# Obtaining the kde using only those test-points belonging to the Up category, but evaluated at all the test points. 
+kde_Up = ks::kde(x = Smarket[index_test_up,c("Lag1", "Lag2")], eval.points = Smarket[test_set, c("Lag1", "Lag2")], supp = 10)
+
+## We find the pi's associated to each category (which can be just computed by using the sample proportion)
+prop_down = sum(Smarket$Direction == "Down")/length(Smarket$Direction)
+prop_up = sum(Smarket$Direction == "Up")/length(Smarket$Direction)
+pi = c(prop_down, prop_up)
+pi 
+```
+
+```{r}
+## Bayes rule
+# We find the f_i*pi_i, for each category: 
+down = kde_Down$estimate*prop_down
+up = kde_Up$estimate*prop_up
+down_up = cbind(down, up)
+# Now, we want to obtain the maximum of the previous 
+bayes_classification = apply(down_up, 1, which.max)
+bayes_classification[bayes_classification == 1] = "Down"
+bayes_classification[bayes_classification == 2] = "Up"
+
+# Error rate 
+error_bayes = mean(bayes_classification != Smarket$Direction[test_set])
+error_bayes
+```
+
+**d. Summarize the conclusions**
+
+From the previous analysis, it can be seen that, first of all, the performance of LDA and QDA is not very good. This has to do with the fact that they use normality assumptions in order to perform their estimations. We can see that, when introducing the non-parametric method, the performance improves quite a lot. However, using the kda still gives an error performance greater than 0.3, which is caused because of the tricky shape of the data points.  
+
+
